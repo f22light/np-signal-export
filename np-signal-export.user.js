@@ -1,9 +1,13 @@
 // ==UserScript==
-// @name         MQL5 Signal CSV Auto Exporter
-// @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  Auto-detect and export trading history or positions as CSV from MQL5 signal pages
+// @name         MQL5 Signal Export Enhancer
+// @namespace    https://f22light.github.io/
+// @version      1.0.0
+// @description  Download merged trading data (history + positions) from MQL5 signals
+// @author       yourusername
 // @match        https://www.mql5.com/*/signals/*
+// @icon         https://www.mql5.com/favicon.ico
+// @updateURL    https://yourusername.github.io/mql5-signal-export/mql5-signal-export.user.js
+// @downloadURL  https://f22light.github.io/np-signal-export/np-signal-export.user.js
 // @grant        none
 // ==/UserScript==
 
