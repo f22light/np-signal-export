@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         MQL5 Signal Export Enhancer
 // @namespace    https://f22light.github.io/
-// @version      1.0.0
+// @version      1.3
 // @description  Download merged trading data (history + positions) from MQL5 signals
 // @author       yourusername
 // @match        https://www.mql5.com/*/signals/*
-// @icon         https://www.mql5.com/favicon.ico
-// @updateURL    https://yourusername.github.io/mql5-signal-export/mql5-signal-export.user.js
+// @updateURL    https://f22light.github.io/np-signal-export/np-signal-export.user.js
 // @downloadURL  https://f22light.github.io/np-signal-export/np-signal-export.user.js
 // @grant        none
 // ==/UserScript==
@@ -14,106 +13,111 @@
 (function () {
     'use strict';
 
-    window.addEventListener('load', () => {
-        const signalIdMatch = window.location.href.match(/signals\/(\d+)/);
-        if (!signalIdMatch) return;
+    const signalIdMatch = window.location.href.match(/signals\/(\d+)/);
+    if (!signalIdMatch) return;
+    const signalId = signalIdMatch[1];
 
-        const signalId = signalIdMatch[1];
-        const langPrefix = location.pathname.split("/")[1];
+    const getSignalName = () => {
+        const nameEl = document.querySelector("h1") || document.querySelector(".signal_title");
+        if (!nameEl) return `trading_data_${signalId}`;
+        return nameEl.textContent.trim().replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "_") + `_${signalId}`;
+    };
 
-        const button = document.createElement("button");
-        button.textContent = "⬇ Download Signal CSV";
-        Object.assign(button.style, {
-            position: "fixed",
-            top: "1px",
-            right: "310px",
-            zIndex: "9999",
-            padding: "10px 16px",
+    const insertButton = () => {
+        const toolbarContainer = document.querySelector("#headerToolbar > div.container.notifications-toolbar");
+        if (!toolbarContainer) return;
+
+        const btn = document.createElement("button");
+        btn.textContent = "⬇ Export Trading Data";
+        Object.assign(btn.style, {
+            marginRight: "10px",
+            padding: "6px 12px",
             fontSize: "14px",
             backgroundColor: "#1d72b8",
             color: "#fff",
             border: "none",
-            borderRadius: "6px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            cursor: "pointer"
+            borderRadius: "5px",
+            cursor: "pointer",
+            transition: "background-color 0.3s ease"
         });
 
-        button.onmouseover = () => button.style.backgroundColor = "#155d91";
-        button.onmouseout = () => button.style.backgroundColor = "#1d72b8";
+        btn.addEventListener("mouseenter", () => btn.style.backgroundColor = "#155d91");
+        btn.addEventListener("mouseleave", () => btn.style.backgroundColor = "#1d72b8");
 
-        document.body.appendChild(button);
-
-        button.onclick = async () => {
+        btn.onclick = async () => {
             try {
-                const urls = {
-                    history: `https://www.mql5.com/${langPrefix}/signals/${signalId}/export/history`,
-                    positions: `https://www.mql5.com/${langPrefix}/signals/${signalId}/export/positions`
-                };
+                const historyURL = `https://www.mql5.com/en/signals/${signalId}/export/history`;
+                const positionsURL = `https://www.mql5.com/en/signals/${signalId}/export/positions`;
 
                 const [historyResp, positionsResp] = await Promise.all([
-                    fetch(urls.history),
-                    fetch(urls.positions)
+                    fetch(historyURL),
+                    fetch(positionsURL)
                 ]);
 
-                const isLoggedOut = (resp) =>
-                    (resp.headers.get("Content-Type") || "").includes("text/html");
-
-                if (isLoggedOut(historyResp) || isLoggedOut(positionsResp)) {
-                    alert("⚠️ Please log in to MQL5.com first.");
+                const contentType = historyResp.headers.get("Content-Type") || "";
+                if (contentType.includes("text/html")) {
+                    alert("⚠️ Please log in to MQL5.com before downloading trading data.");
                     return;
                 }
 
                 const historyText = await historyResp.text();
                 const positionsText = await positionsResp.text();
 
-                const isValidCSV = (text) => {
-                    const head = text.split("\n")[0];
-                    return head.startsWith("Time;Type;Volume;Symbol");
-                };
-
                 const cleanCSV = (raw) => {
                     return raw
                         .replace(/^\uFEFF/, '')
                         .split("\n")
-                        .filter(l => l && !l.includes("Balance") && !l.includes("Credit"))
+                        .filter(l => !l.includes("Balance") && !l.includes("Credit") && l.trim())
                         .map(l => {
                             const parts = l.split(";");
-                            if (parts[0]?.includes(".")) parts[0] = parts[0].replaceAll(".", "/");
-                            if (parts[6]?.includes(".")) parts[6] = parts[6].replaceAll(".", "/");
+                            if (parts[0]?.includes('.')) parts[0] = parts[0].replaceAll('.', '/');
+                            if (parts[6]?.includes('.')) parts[6] = parts[6].replaceAll('.', '/');
                             return parts.join(",");
                         });
                 };
 
-                let lines = [];
-                let fileLabel = "";
-                let rows = [];
+                const isValidCSV = (text) => {
+                    const header = text.split("\n")[0] || "";
+                    return header.includes("Symbol") && header.includes("Price") && header.includes("Volume");
+                };
 
-                if (isValidCSV(historyText)) {
-                    const header = historyText.split("\n")[0].replace(/;/g, ",");
-                    const data = cleanCSV(historyText.split("\n").slice(1).join("\n"));
-                    lines = [header, ...data];
-                    fileLabel = "history";
-                } else if (isValidCSV(positionsText)) {
-                    const header = positionsText.split("\n")[0].replace(/;/g, ",");
-                    const data = cleanCSV(positionsText.split("\n").slice(1).join("\n"));
-                    lines = [header, ...data];
-                    fileLabel = "positions";
-                } else {
-                    alert("❌ No valid trading data found for this signal.");
+                if (!isValidCSV(historyText)) {
+                    alert("❌ No valid trading history found for this signal.");
                     return;
                 }
 
-                const signalName = document.querySelector("h1")?.textContent.trim().replace(/[\\/:*?"<>|]/g, "_") || "Signal";
+                const historyRows = cleanCSV(historyText);
+                const positionRows = positionsText.trim().startsWith("[NotFound]") ? [] : cleanCSV(positionsText);
 
-                const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+                const allRows = [...historyRows, ...positionRows];
+                allRows.sort((a, b) => new Date(a.split(",")[0]) - new Date(b.split(",")[0]));
+
+                const header = historyText.split("\n")[0].replace(/;/g, ",");
+                const mergedCSV = [header, ...allRows].join("\n");
+
+                const blob = new Blob([mergedCSV], { type: "text/csv;charset=utf-8" });
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
-                a.download = `${signalName}_${signalId}_${fileLabel}.csv`;
+                a.download = `${getSignalName()}.csv`;
                 a.click();
-            } catch (err) {
-                alert("❌ Error during download:\n" + err.message);
-                console.error(err);
+            } catch (e) {
+                alert("❌ Error downloading data: " + e.message);
             }
         };
+
+        toolbarContainer.insertBefore(btn, toolbarContainer.firstChild);
+    };
+
+    const waitForElement = (selector, timeout = 5000) => new Promise((resolve) => {
+        const interval = setInterval(() => {
+            const el = document.querySelector(selector);
+            if (el) {
+                clearInterval(interval);
+                resolve(el);
+            }
+        }, 100);
+        setTimeout(() => clearInterval(interval), timeout);
     });
+
+    waitForElement("#headerToolbar > div.container.notifications-toolbar").then(insertButton);
 })();
