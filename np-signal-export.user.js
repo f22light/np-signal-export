@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MQL5 Signal Export Enhancer
 // @namespace    https://f22light.github.io/
-// @version      1.3
+// @version      1.9
 // @description  Download merged trading data (history + positions) from MQL5 signals
 // @author       yourusername
 // @match        https://www.mql5.com/*/signals/*
@@ -28,7 +28,7 @@
         if (!toolbarContainer) return;
 
         const btn = document.createElement("button");
-        btn.textContent = "⬇ Export Trading Data";
+        btn.textContent = "⬇"; // 기호만 남기기
         Object.assign(btn.style, {
             marginRight: "10px",
             padding: "6px 12px",
@@ -54,20 +54,20 @@
                     fetch(positionsURL)
                 ]);
 
-                const contentType = historyResp.headers.get("Content-Type") || "";
-                if (contentType.includes("text/html")) {
-                    alert("⚠️ Please log in to MQL5.com before downloading trading data.");
+                // Check for successful response status
+                if (!historyResp.ok) {
+                    alert("⚠️ Error fetching history data: " + (historyResp.statusText || "Unknown error"));
                     return;
                 }
 
                 const historyText = await historyResp.text();
-                const positionsText = await positionsResp.text();
+                const positionsText = positionsResp.ok ? await positionsResp.text() : null;
 
                 const cleanCSV = (raw) => {
                     return raw
                         .replace(/^\uFEFF/, '')
                         .split("\n")
-                        .filter(l => !l.includes("Balance") && !l.includes("Credit") && l.trim())
+                        .filter(l => l.trim() && !l.includes("Balance") && !l.includes("Credit"))
                         .map(l => {
                             const parts = l.split(";");
                             if (parts[0]?.includes('.')) parts[0] = parts[0].replaceAll('.', '/');
@@ -87,15 +87,28 @@
                 }
 
                 const historyRows = cleanCSV(historyText);
-                const positionRows = positionsText.trim().startsWith("[NotFound]") ? [] : cleanCSV(positionsText);
+                let positionRows = [];
+                if (positionsText && positionsText.trim() !== "[NotFound]") {
+                    positionRows = cleanCSV(positionsText);
+                } else {
+                    // If no positions file, convert history file to positions format
+                    positionRows = convertHistoryToPositions(historyRows);
+                }
 
-                const allRows = [...historyRows, ...positionRows];
+                const allRows = [...positionRows];
                 allRows.sort((a, b) => new Date(a.split(",")[0]) - new Date(b.split(",")[0]));
 
-                const header = historyText.split("\n")[0].replace(/;/g, ",");
+                // Set the fixed header (as per your specification)
+                const header = "Time,Type,Volume,Symbol,Price,Volume,Time,Price,Commission,Swap,Profit";
+                
                 const mergedCSV = [header, ...allRows].join("\n");
 
-                const blob = new Blob([mergedCSV], { type: "text/csv;charset=utf-8" });
+                // Remove duplicate header rows (if any)
+                const finalCSV = mergedCSV.split("\n").filter((row, index, self) => {
+                    return index === 0 || row !== self[0];
+                }).join("\n");
+
+                const blob = new Blob([finalCSV], { type: "text/csv;charset=utf-8" });
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);
                 a.download = `${getSignalName()}.csv`;
@@ -106,6 +119,51 @@
         };
 
         toolbarContainer.insertBefore(btn, toolbarContainer.firstChild);
+    };
+
+    const convertHistoryToPositions = (historyRows) => {
+        const positions = [];
+        let lastBuy = null;
+
+        historyRows.forEach(row => {
+            const parts = row.split(",");
+            const time = parts[0];
+            const type = parts[1]; // Buy or Sell
+            const volume = parts[2];
+            const symbol = parts[3];
+            const price = parts[4];
+            const stopLoss = parts[5];
+            const takeProfit = parts[6];
+            const closingTime = parts[7];
+            const closingPrice = parts[8];
+            const commission = parts[9];
+            const swap = parts[10];
+            const profit = parts[11];
+            const comment = parts[12];
+
+            if (type === "Buy") {
+                // If it's a Buy trade (In)
+                lastBuy = { time, volume, symbol, price, closingTime, closingPrice, commission, swap, profit, comment };
+            } else if (type === "Sell" && lastBuy) {
+                // If it's a Sell trade (Out), we match it with the last Buy trade
+                positions.push([
+                    lastBuy.time,  // Buy Time
+                    "Buy",         // Buy
+                    lastBuy.volume, // Buy Volume
+                    lastBuy.symbol, // Symbol
+                    lastBuy.price, // Buy Price
+                    volume,         // Sell Volume
+                    closingTime,    // Sell Time
+                    closingPrice,   // Sell Price
+                    commission,     // Commission
+                    swap,           // Swap
+                    profit          // Profit
+                ].join(","));
+                lastBuy = null; // Reset for next pair
+            }
+        });
+
+        return positions;
     };
 
     const waitForElement = (selector, timeout = 5000) => new Promise((resolve) => {
