@@ -49,59 +49,30 @@
                 const historyURL = `https://www.mql5.com/en/signals/${signalId}/export/history`;
                 const positionsURL = `https://www.mql5.com/en/signals/${signalId}/export/positions`;
 
-                const [historyResp, positionsResp] = await Promise.all([
-                    fetch(historyURL),
-                    fetch(positionsURL)
+                const [positionsResp, historyResp] = await Promise.all([
+                    fetch(positionsURL),
+                    fetch(historyURL)
                 ]);
 
-                // Check for successful response status
-                if (!historyResp.ok) {
-                    alert("⚠️ Error fetching history data: " + (historyResp.statusText || "Unknown error"));
-                    return;
-                }
-
-                const historyText = await historyResp.text();
                 const positionsText = positionsResp.ok ? await positionsResp.text() : null;
-
-                const cleanCSV = (raw) => {
-                    return raw
-                        .replace(/^\uFEFF/, '')
-                        .split("\n")
-                        .filter(l => l.trim() && !l.includes("Balance") && !l.includes("Credit"))
-                        .map(l => {
-                            const parts = l.split(";");
-                            if (parts[0]?.includes('.')) parts[0] = parts[0].replaceAll('.', '/');
-                            if (parts[6]?.includes('.')) parts[6] = parts[6].replaceAll('.', '/');
-                            return parts.join(",");
-                        });
-                };
-
-                const isValidCSV = (text) => {
-                    const header = text.split("\n")[0] || "";
-                    return header.includes("Symbol") && header.includes("Price") && header.includes("Volume");
-                };
-
-                if (!isValidCSV(historyText)) {
-                    alert("❌ No valid trading history found for this signal.");
-                    return;
-                }
-
-                const historyRows = cleanCSV(historyText);
                 let positionRows = [];
+
+                // Check if positions file is available and contains valid data
                 if (positionsText && positionsText.trim() !== "[NotFound]") {
                     positionRows = cleanCSV(positionsText);
                 } else {
-                    // If no positions file, convert history file to positions format
-                    positionRows = convertHistoryToPositions(historyRows);
+                    // If positions file is not available, use history file to generate positions data
+                    const historyText = await historyResp.text();
+                    positionRows = convertHistoryToPositions(cleanCSV(historyText));
                 }
 
-                const allRows = [...positionRows];
-                allRows.sort((a, b) => new Date(a.split(",")[0]) - new Date(b.split(",")[0]));
+                // Sort the data based on time
+                positionRows.sort((a, b) => new Date(a.split(",")[0]) - new Date(b.split(",")[0]));
 
-                // Set the fixed header (as per your specification)
-                const header = "Time,Type,Volume,Symbol,Price,Volume,Time,Price,Commission,Swap,Profit";
-                
-                const mergedCSV = [header, ...allRows].join("\n");
+                // Define fixed header for the positions CSV
+                const fixedHeader = "Time,Type,Volume,Symbol,Price,Volume,Time,Price,Commission,Swap,Profit";
+
+                const mergedCSV = [fixedHeader, ...positionRows].join("\n");
 
                 // Remove duplicate header rows (if any)
                 const finalCSV = mergedCSV.split("\n").filter((row, index, self) => {
@@ -121,45 +92,57 @@
         toolbarContainer.insertBefore(btn, toolbarContainer.firstChild);
     };
 
+    const cleanCSV = (raw) => {
+        return raw
+            .replace(/^\uFEFF/, '') // BOM 제거
+            .split("\n")
+            .filter(l => l.trim() && !l.includes("Balance") && !l.includes("Credit"))
+            .map(l => {
+                const parts = l.split(";");
+
+                // 날짜 형식 변경 (2023.06.15 -> 2023/06/15)
+                if (parts[0]?.includes(':')) parts[0] = parts[0].replaceAll('.', '/');
+
+                // 두 번째 Time 컬럼에서 날짜 형식 변경 (2023.06.15 -> 2023/06/15)
+                if (parts[6]?.includes(':')) parts[6] = parts[6].replaceAll('.', '/');
+
+                return parts.join(",");
+            });
+    };
+
     const convertHistoryToPositions = (historyRows) => {
         const positions = [];
-        let lastBuy = null;
 
         historyRows.forEach(row => {
             const parts = row.split(",");
-            const time = parts[0];
-            const type = parts[1]; // Buy or Sell
-            const volume = parts[2];
-            const symbol = parts[3];
-            const price = parts[4];
-            const stopLoss = parts[5];
-            const takeProfit = parts[6];
-            const closingTime = parts[7];
-            const closingPrice = parts[8];
-            const commission = parts[9];
-            const swap = parts[10];
-            const profit = parts[11];
-            const comment = parts[12];
+            const time = parts[0];      // Buy/Sell Time
+            const type = parts[1];      // Buy or Sell
+            const volume = parts[2];    // Volume
+            const symbol = parts[3];    // Symbol
+            const price = parts[4];     // Price
+            const sl = parts[5];        // S/L (not needed, to be removed)
+            const tp = parts[6];        // T/P (not needed, to be removed)
+            const closeTime = parts[7]; // Close Time
+            const closePrice = parts[8]; // Close Price
+            const commission = parts[9]; // Commission
+            const swap = parts[10];      // Swap
+            const profit = parts[11];    // Profit
+            const comment = parts[12];   // Comment (to be removed)
 
-            if (type === "Buy") {
-                // If it's a Buy trade (In)
-                lastBuy = { time, volume, symbol, price, closingTime, closingPrice, commission, swap, profit, comment };
-            } else if (type === "Sell" && lastBuy) {
-                // If it's a Sell trade (Out), we match it with the last Buy trade
+            if (type === "Buy" || type === "Sell") {
                 positions.push([
-                    lastBuy.time,  // Buy Time
-                    "Buy",         // Buy
-                    lastBuy.volume, // Buy Volume
-                    lastBuy.symbol, // Symbol
-                    lastBuy.price, // Buy Price
-                    volume,         // Sell Volume
-                    closingTime,    // Sell Time
-                    closingPrice,   // Sell Price
-                    commission,     // Commission
-                    swap,           // Swap
-                    profit          // Profit
+                    time,          // Buy/Sell Time
+                    type,          // Buy/Sell Type
+                    volume,        // Volume
+                    symbol,        // Symbol
+                    price,         // Open Price
+                    volume,        // Volume (right column as per requirement)
+                    closeTime,     // Close Time
+                    closePrice,    // Close Price
+                    commission,    // Commission
+                    swap,          // Swap
+                    profit         // Profit
                 ].join(","));
-                lastBuy = null; // Reset for next pair
             }
         });
 
