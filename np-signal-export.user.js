@@ -104,7 +104,9 @@
                 if (parts[0]?.includes(':')) parts[0] = parts[0].replaceAll('.', '/');
 
                 // 두 번째 Time 컬럼에서 날짜 형식 변경 (2023.06.15 -> 2023/06/15)
+                if (parts[5]?.includes(':')) parts[5] = parts[5].replaceAll('.', '/');
                 if (parts[6]?.includes(':')) parts[6] = parts[6].replaceAll('.', '/');
+                if (parts[7]?.includes(':')) parts[7] = parts[7].replaceAll('.', '/');
 
                 return parts.join(",");
             });
