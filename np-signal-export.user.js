@@ -24,7 +24,7 @@
     };
 
     const insertButton = () => {
-        const toolbarContainer = document.querySelector("#headerToolbar > div.container.notifications-toolbar");
+        const toolbarContainer = document.querySelector("#headerToolbar");
         if (!toolbarContainer) return;
 
         const btn = document.createElement("button");
@@ -162,5 +162,5 @@
         setTimeout(() => clearInterval(interval), timeout);
     });
 
-    waitForElement("#headerToolbar > div.container.notifications-toolbar").then(insertButton);
+    waitForElement("#headerToolbar").then(insertButton);
 })();
