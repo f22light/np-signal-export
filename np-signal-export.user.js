@@ -99,15 +99,6 @@
             .filter(l => l.trim() && !l.includes("Balance") && !l.includes("Credit"))
             .map(l => {
                 const parts = l.split(";");
-
-                // 날짜 형식 변경 (2023.06.15 -> 2023/06/15)
-                if (parts[0]?.includes(':')) parts[0] = parts[0].replaceAll('.', '/');
-
-                // 두 번째 Time 컬럼에서 날짜 형식 변경 (2023.06.15 -> 2023/06/15)
-                if (parts[5]?.includes(':')) parts[5] = parts[5].replaceAll('.', '/');
-                if (parts[6]?.includes(':')) parts[6] = parts[6].replaceAll('.', '/');
-                if (parts[7]?.includes(':')) parts[7] = parts[7].replaceAll('.', '/');
-
                 return parts.join(",");
             });
     };
@@ -117,18 +108,18 @@
 
         historyRows.forEach(row => {
             const parts = row.split(",");
-            const time = parts[0];      // Buy/Sell Time
+            const time = parts[0].replaceAll('.', '/');      // Buy/Sell Time
             const type = parts[1];      // Buy or Sell
             const volume = parts[2];    // Volume
             const symbol = parts[3];    // Symbol
-            const price = parts[4];     // Price
+            const price = parts[4].replaceAll(' ','');     // Price
             const sl = parts[5];        // S/L (not needed, to be removed)
             const tp = parts[6];        // T/P (not needed, to be removed)
-            const closeTime = parts[7]; // Close Time
-            const closePrice = parts[8]; // Close Price
-            const commission = parts[9]; // Commission
-            const swap = parts[10];      // Swap
-            const profit = parts[11];    // Profit
+            const closeTime = parts[7].replaceAll('.', '/'); // Close Time
+            const closePrice = parts[8].replaceAll(' ',''); // Close Price
+            const commission = parts[9].replaceAll(' ',''); // Commission
+            const swap = parts[10].replaceAll(' ','');      // Swap
+            const profit = parts[11].replaceAll(' ','');    // Profit
             const comment = parts[12];   // Comment (to be removed)
 
             if (type === "Buy" || type === "Sell") {
